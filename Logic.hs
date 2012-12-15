@@ -43,7 +43,7 @@ data Attacker = Attacker {
 data Level = Level {
     _hangs  :: [Hanger],
     _falls  :: [Bomb],    
-    _attackers  :: [Attacker]}
+    _aks    :: [Attacker]}
 
 -- * Functions
 
