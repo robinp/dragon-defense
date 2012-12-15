@@ -10,9 +10,9 @@ import Graphics.Gloss
 import Villain.Logic
 import Villain.Logic.Lens
 
-drawLevel l = Pictures $ drawHangs ++ drawAks ++ [drawNotify]
-  where drawHangs = drawHang <$> l^.hangs
-        drawAks = drawAk <$> l^.aks
+drawLevel lvl = Pictures $ drawHangs ++ drawAks ++ [drawNotify]
+  where drawHangs = drawHang <$> lvl^.hangs
+        drawAks = drawAk <$> lvl^.aks
 
 drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Working on attacker progression"
 
@@ -47,4 +47,26 @@ initLevel = Level hs [] aks
         ky = -100
 
 main :: IO ()
-main = display (InWindow "Liter" (640, 480) (10, 10)) white $ drawLevel initLevel
+main = play (InWindow "Liter" (640, 480) (10, 10)) white fps initLevel drawLevel input update
+  where input _ w = w
+        update _ w = moveAks w
+        fps = 20
+
+moveAks :: Level -> Level
+moveAks = aks.mapped %~ moveAk
+  where moveAk = do
+          k <- view kindA
+          posA._1 +~ akSpeed k  
+
+akSpeed :: AttackerKind -> Double
+akSpeed k = case k of
+    Knight      -> 3.0
+    FastKnight  -> 5.0
+
+bboxOf :: BombKind -> Rect
+bboxOf k = case k of
+  Cow     -> fromDim 30   10
+  Anchor  -> fromDim 15   15
+  Vase    -> fromDim  5   20
+  where
+    fromDim w h = Rect (-w/2, -h/2) (w/2, h/2)
