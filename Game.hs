@@ -90,8 +90,12 @@ moveAks = aks.mapped %~ moveAk
           posA._1 +~ akSpeed k  
 
 moveBombs :: Level -> Level
-moveBombs = falls.mapped %~ execState fallDown
-  where fallDown = do
+moveBombs = disappearBombs . fallBombs
+  where disappearBombs = falls %~ filter (views (posB._2) (floorLine <))
+                               -- filter (\b -> b^.posB._2 > floorLine) -- is this simpler?
+        floorLine = (-150)
+        fallBombs = falls.mapped %~ execState fallBomb
+        fallBomb = do
           spd <- speedB <+= 0.15 -- gravity
           posB._2 -= spd
 
