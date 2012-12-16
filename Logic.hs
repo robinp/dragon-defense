@@ -7,6 +7,8 @@ module Villain.Logic -- TODO rename to *.Data, migrate lens back
     , AttackerKind(..)
     , Attacker(..)
     , Level(..)
+    , Game(..)
+    , GamePhase(..)
 
     , Rect(..)
 ) where
@@ -44,4 +46,11 @@ data Level = Level {
     _falls  :: [Bomb],   -- TODO rename _bombs
     _aks    :: [Attacker]}
 
+data GamePhase 
+  = InGame 
+  | Lost
+  | Success
 
+data Game = Game {
+  _level  :: Level,
+  _phase  :: GamePhase}

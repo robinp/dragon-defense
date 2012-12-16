@@ -19,12 +19,20 @@ import Villain.Logic.Lens
 
 import Debug.Trace
 
+drawGame g = Pictures [lvl, dialog]
+  where lvl = drawLevel $ g^.level
+        dialog = case g^.phase of
+                      InGame    -> Blank
+                      Lost      -> dialogRect red
+                      Success   -> dialogRect green
+        dialogRect col = Color col $ drawRect $ Rect (-50, 30) (50, -30)
+
 drawLevel lvl = Pictures $ drawHangs ++ drawAks ++ drawBombs ++ [drawNotify]
   where drawHangs = drawHang <$> lvl^.hangs
         drawAks = drawAk <$> lvl^.aks
         drawBombs = drawBomb <$> lvl^.falls
 
-drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Enemy collision"
+drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Level lose condtition"
 
 drawBomb b =
   let (x, y) = bombXY b
@@ -61,14 +69,40 @@ initLevel = Level hs [] aks
   where hs  = [
           Hanger (Peg (100, 200)) (Bomb Cow (100, 100) 0),
           Hanger (Peg (10, 180)) (Bomb Anchor (10, 130) 0) ]
-        aks = [Attacker Knight (-100, ky), Attacker FastKnight (-150, ky)]
+        aks = [Attacker Knight (-200, ky), Attacker FastKnight (-150, ky)]
         ky = -100
 
+initGame = Game initLevel InGame
+
+--
+-- TODO global input state, use Reader
+--
+fps = 20
+towerX = 200
+
 main :: IO ()
-main = play (InWindow "Liter" (640, 480) (10, 10)) white fps initLevel drawLevel input update
-  where input _ = execState (detachFirst $ const True)
-        update _ w = (bombAks . moveBombs . moveAks) w
-        fps = 20
+main = play (InWindow "Liter" (640, 480) (50, 50)) white fps initGame drawGame gameInput gameUpdate
+
+gameInput evs game = 
+  game & case game^.phase of
+              InGame    -> level %~ (execState $ detachFirst $ const True) -- TODO predicate from mouse pos
+              otherwise -> id
+
+gameUpdate dt game =
+  game & case game^.phase of
+              InGame    -> execState ingameUpdate
+              otherwise -> id
+
+ingameUpdate :: State Game ()
+ingameUpdate = do
+  level %= (bombAks . moveBombs . moveAks)
+  levelFailed <- use $ level.aks.to (any reachedTower)
+  levelWon <- use $ level.aks.to null
+  when levelFailed $ phase .= Lost
+  when levelWon $ phase .= Success
+
+reachedTower :: Attacker -> Bool
+reachedTower = views (posA._1) (towerX <)
 
 detachFirst :: (Hanger -> Bool) -> State Level ()
 detachFirst p = do

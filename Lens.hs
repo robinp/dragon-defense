@@ -12,3 +12,4 @@ makeLenses ''Hanger
 makeLenses ''Attacker
 makeLenses ''Level
 makeLenses ''Rect
+makeLenses ''Game
