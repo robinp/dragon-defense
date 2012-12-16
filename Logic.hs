@@ -41,7 +41,7 @@ data Attacker = Attacker {
 
 data Level = Level {
     _hangs  :: [Hanger],
-    _falls  :: [Bomb],    
+    _falls  :: [Bomb],   -- TODO rename _bombs
     _aks    :: [Attacker]}
 
 
