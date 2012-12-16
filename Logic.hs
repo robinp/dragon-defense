@@ -21,7 +21,8 @@ data Rect = Rect {
     _tl :: Point,
     _br :: Point}
 
-data BombKind = Cow | Anchor | Vase
+data BombKind = Cow | Anvil | Goat | Plant | Piano
+  deriving Eq
 
 data Bomb = Bomb {
     _kindB  :: BombKind,
@@ -36,6 +37,7 @@ data Hanger = Hanger {
     _bombH  :: Bomb}
 
 data AttackerKind = Knight | FastKnight
+  deriving Eq
 
 data Attacker = Attacker {
     _kindA  :: AttackerKind,
