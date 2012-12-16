@@ -7,6 +7,7 @@ import Control.Lens
 import Control.Monad.State
 
 import Data.List (find, partition)
+import Data.Maybe (isJust)
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game as GG
@@ -108,7 +109,7 @@ ingameInput ev = execState $ do
     
     doFire = do
       dragonPos <- use $ mouse._2
-      level %= execState (detachFirst $ isHangerCutAt dragonPos)
+      level %= execState (detachAll $ isHangerCutAt dragonPos)
 
 isHangerCutAt y = do
   pegY <- view $ pegH.posP._2
@@ -131,10 +132,17 @@ ingameUpdate = do
 reachedTower :: Attacker -> Bool
 reachedTower = views (posA._1) (towerX <)
 
-detachFirst :: (Hanger -> Bool) -> State Level ()
+-- | Detaches all bombs from the passing hangers
+detachAll :: (Hanger -> Bool) -> State Level ()
+detachAll p =
+  detachFirst p >>= (flip when $ detachAll p)
+
+-- | Tries to detach a bomb and tells if succeeded
+detachFirst :: (Hanger -> Bool) -> State Level Bool
 detachFirst p = do
   mayH <- withSubSt hangs $ popHanger p
   falls %= (maybe [] (return . _bombH) mayH ++)
+  return $ isJust mayH
 
 popHanger :: (Hanger -> Bool) -> State [Hanger] (Maybe Hanger)
 popHanger p = do
