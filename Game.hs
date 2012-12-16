@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Villain.Game (main) where
 
 import GHC.Float
@@ -11,6 +9,7 @@ import Control.Monad.State
 import Data.List (find, partition)
 
 import Graphics.Gloss
+import Graphics.Gloss.Interface.Pure.Game as GG
 
 import RWSExtras
 
@@ -19,20 +18,25 @@ import Villain.Logic.Lens
 
 import Debug.Trace
 
-drawGame g = Pictures [lvl, dialog]
+drawGame g = Pictures [lvl, dialog, mouse']
   where lvl = drawLevel $ g^.level
         dialog = case g^.phase of
                       InGame    -> Blank
                       Lost      -> dialogRect red
                       Success   -> dialogRect green
         dialogRect col = Color col $ drawRect $ Rect (-50, 30) (50, -30)
+        mouse' = drawMouse (g^.mouse)
+
+drawMouse m = 
+  let (x, y) = biD2F m
+  in  Color orange $ Translate x y $ ThickCircle 5 2
 
 drawLevel lvl = Pictures $ drawHangs ++ drawAks ++ drawBombs ++ [drawNotify]
   where drawHangs = drawHang <$> lvl^.hangs
         drawAks = drawAk <$> lvl^.aks
         drawBombs = drawBomb <$> lvl^.falls
 
-drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Level lose condtition"
+drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Mouse follow related"
 
 drawBomb b =
   let (x, y) = bombXY b
@@ -51,6 +55,7 @@ drawHang h =
 
 
 biD2F = both %~ double2Float
+biF2D = both %~ float2Double
 
 drawAk ak =
     let (x, y) = biD2F $ ak^.posA
@@ -72,7 +77,7 @@ initLevel = Level hs [] aks
         aks = [Attacker Knight (-200, ky), Attacker FastKnight (-150, ky)]
         ky = -100
 
-initGame = Game initLevel InGame
+initGame = Game initLevel InGame (0, 0)
 
 --
 -- TODO global input state, use Reader
@@ -83,10 +88,32 @@ towerX = 200
 main :: IO ()
 main = play (InWindow "Liter" (640, 480) (50, 50)) white fps initGame drawGame gameInput gameUpdate
 
-gameInput evs game = 
+gameInput ev game = 
   game & case game^.phase of
-              InGame    -> level %~ (execState $ detachFirst $ const True) -- TODO predicate from mouse pos
+              InGame    -> ingameInput ev
               otherwise -> id
+
+ingameInput :: GG.Event -> Game -> Game
+ingameInput ev = execState $ do
+  maybe (return ()) ((mouse .=) . biF2D) (updateFromEv ev)
+  when (fireFromEv ev) doFire
+  where
+    updateFromEv ev = 
+      case ev of GG.EventMotion pos -> Just pos
+                 otherwise          -> Nothing
+
+    fireFromEv ev =
+      case ev of GG.EventKey (GG.MouseButton _) GG.Down _ _ -> True
+                 otherwise                                  -> False
+    
+    doFire = do
+      dragonPos <- use $ mouse._2
+      level %= execState (detachFirst $ isHangerCutAt dragonPos)
+
+isHangerCutAt y = do
+  pegY <- view $ pegH.posP._2
+  bombY <- view $ bombH.posB._2
+  return $ bombY <= y && y <= pegY
 
 gameUpdate dt game =
   game & case game^.phase of
@@ -116,7 +143,7 @@ popHanger p = do
   return mayHanger
   where
     removeFst p xs = 
-      let (as, bs) = span (not . p) xs
+      let (as, bs) = break p xs
       in  as ++ if null bs then bs else tail bs
 
 moveAks :: Level -> Level
@@ -147,7 +174,7 @@ moveBombs :: Level -> Level
 moveBombs = disappearBombs . fallBombs
   where disappearBombs = falls %~ filter (views (posB._2) (floorLine <))
                                -- filter (\b -> b^.posB._2 > floorLine) -- is this simpler?
-        floorLine = (-150)
+        floorLine = -150
         fallBombs = falls.mapped %~ execState fallBomb
         fallBomb = do
           spd <- speedB <+= 0.15 -- gravity

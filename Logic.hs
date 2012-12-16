@@ -53,4 +53,5 @@ data GamePhase
 
 data Game = Game {
   _level  :: Level,
-  _phase  :: GamePhase}
+  _phase  :: GamePhase,
+  _mouse  :: Point}
