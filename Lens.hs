@@ -11,3 +11,4 @@ makeLenses ''Peg
 makeLenses ''Hanger
 makeLenses ''Attacker
 makeLenses ''Level
+makeLenses ''Rect

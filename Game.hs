@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Villain.Game (main) where
 
 import GHC.Float
@@ -6,7 +8,7 @@ import Control.Applicative
 import Control.Lens
 import Control.Monad.State
 
-import Data.List (find)
+import Data.List (find, partition)
 
 import Graphics.Gloss
 
@@ -22,7 +24,7 @@ drawLevel lvl = Pictures $ drawHangs ++ drawAks ++ drawBombs ++ [drawNotify]
         drawAks = drawAk <$> lvl^.aks
         drawBombs = drawBomb <$> lvl^.falls
 
-drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Bombs falling"
+drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Enemy collision"
 
 drawBomb b =
   let (x, y) = bombXY b
@@ -65,7 +67,7 @@ initLevel = Level hs [] aks
 main :: IO ()
 main = play (InWindow "Liter" (640, 480) (10, 10)) white fps initLevel drawLevel input update
   where input _ = execState (detachFirst $ const True)
-        update _ w = (moveBombs . moveAks) w
+        update _ w = (bombAks . moveBombs . moveAks) w
         fps = 20
 
 detachFirst :: (Hanger -> Bool) -> State Level ()
@@ -89,6 +91,24 @@ moveAks = aks.mapped %~ moveAk
           k <- view kindA
           posA._1 +~ akSpeed k  
 
+bombAks :: Level -> Level
+bombAks lvl = 
+  let (remBs, remAks) = bombAks0 (lvl^.falls) (lvl^.aks) []
+  in  flip execState lvl $ (falls .= remBs) >> (aks .= remAks) -- TODO Lens & ?
+
+bombAks0 :: [Bomb] -> [Attacker] -> [Bomb] -> ([Bomb], [Attacker])
+bombAks0 bombs aks remainBombs = case bombs of
+  []    ->  (reverse remainBombs, aks)
+  b:bs  ->  let (aksHit, aksNotHit) = partition (hitBy b) aks
+                rb = if null aksHit then b:remainBombs else remainBombs
+            in  bombAks0 bs aksNotHit rb
+
+hitBy b ak = 
+  --TODO
+  near (b^.posB) (ak^.posA) 50
+  where
+    near (x1, y1) (x2, y2) d = abs (x1 - x2) + abs (y1 - y2) <= d
+
 moveBombs :: Level -> Level
 moveBombs = disappearBombs . fallBombs
   where disappearBombs = falls %~ filter (views (posB._2) (floorLine <))
@@ -109,5 +129,9 @@ bboxOf k = case k of
   Cow     -> fromDim 30   10
   Anchor  -> fromDim 15   15
   Vase    -> fromDim  5   20
-  where
-    fromDim w h = Rect (-w/2, -h/2) (w/2, h/2)
+
+-- TODO bbox doesn't match gfx yet
+bboxOfA :: AttackerKind -> Rect
+bboxOfA ak = fromDim 20   30
+
+fromDim w h = Rect (-w/2, -h/2) (w/2, h/2)
