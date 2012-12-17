@@ -14,8 +14,8 @@ import Data.Maybe (isJust, fromJust)
 
 import Codec.Picture
 import Codec.BMP
-import Graphics.Gloss
-import Graphics.Gloss.Interface.Pure.Game as GG
+import Graphics.Gloss hiding (Point)
+import qualified Graphics.Gloss.Interface.Pure.Game as GG
 
 import RWSExtras
 
@@ -27,7 +27,8 @@ data Pics = Pics {
   _akPics       :: [(AttackerKind, Picture)],
   _bombPics     :: [(BombKind, Picture)], 
   _pegPic       :: Picture,
-  _dragonPic    :: Picture
+  _dragonPic    :: Picture,
+  _bgPic        :: Picture
 }
 --
 makeLenses ''Pics
@@ -46,12 +47,13 @@ drawMouse pics m =
   let (_, y) = biD2F m
   in  Translate dragonX (max (double2Float dragonMinY) y) $ pics^.dragonPic
 
-drawLevel pics lvl = Pictures $ drawHangs ++ drawAks ++ drawBombs ++ [drawNotify]
+drawLevel pics lvl = Pictures $ [drawBg] ++ drawHangs ++ drawAks ++ drawBombs ++ [drawNotify]
   where drawHangs = drawHang pics <$> lvl^.hangs
         drawAks = drawAk pics <$> lvl^.aks
         drawBombs = drawBomb pics <$> lvl^.falls
+        drawBg = pics^.bgPic
 
-drawNotify = Translate (-250) 200 $ Scale 0.15 0.15 $ Text "Mouse follow related"
+drawNotify = Translate (-250) 200 $ Color black $ Scale 0.15 0.15 $ Text "Click to fire"
 
 drawBomb pics b =
   let (x, y) = bombXY b
@@ -86,10 +88,14 @@ drawRect (Rect tl br) = Polygon $ mapped.both %~ double2Float $ [tl, yx tl br, b
 
 initLevel = Level hs [] aks
   where hs  = [
-          Hanger (Peg (100, 200)) (Bomb Cow (100, 100) 0),
-          Hanger (Peg (10, 180)) (Bomb Anvil (10, 130) 0) ]
-        aks = [Attacker Knight (-200, ky), Attacker FastKnight (-150, ky)]
-        ky = -100
+          mkHang Cow 100 hangBase 100,
+          mkHang Anvil (-100) (hangBase-50) 100 ]
+        aks = [
+          mkAk Knight (-400),
+          mkAk FastKnight (-550) ]
+
+mkHang bk x y h = Hanger (Peg (x, y)) (Bomb bk (x, y-h) 0) 
+mkAk ak x = Attacker ak (x, floorLine)
 
 initGame = Game initLevel InGame (0, 0)
 
@@ -99,8 +105,10 @@ initGame = Game initLevel InGame (0, 0)
 fps = 20
 towerX = 250
 dragonX = 300
-dragonMinY = floorLine + 50
-floorLine = -150 :: Double
+dragonMinY = floorLine + 150
+floorLine = -220 :: Double
+hangBase = 100
+gravity = 0.3
 
 bombImageName bk = case bk of
   Cow   -> "cow.bmp"
@@ -117,6 +125,7 @@ main :: IO ()
 main = do
   peg         <- loadBMP "peg.bmp"
   dragon      <- loadBMP "dragon.bmp"
+  bg          <- loadBMP "bg.bmp"
   --
   let bombKinds = [Cow, Anvil, Goat, Plant, Piano]
   bombs <- mapM loadBMP $ bombImageName <$> bombKinds
@@ -126,7 +135,7 @@ main = do
   aks <- mapM loadBMP $ akImageName <$> aKinds
   let akPics' = zip aKinds aks
   --
-  let pics = Pics akPics' bombPics' peg dragon
+  let pics = Pics akPics' bombPics' peg dragon bg
   let draw = drawGame pics
   play (InWindow "Liter" (800, 600) (50, 50)) white fps initGame draw gameInput gameUpdate
 
@@ -213,11 +222,22 @@ bombAks0 bombs aks remainBombs = case bombs of
                 rb = if null aksHit then b:remainBombs else remainBombs
             in  bombAks0 bs aksNotHit rb
 
-hitBy b ak = 
-  --TODO
-  near (b^.posB) (ak^.posA) 50
-  where
-    near (x1, y1) (x2, y2) d = abs (x1 - x2) + abs (y1 - y2) <= d
+hitBy b ak =
+  let boundB = bboxOf (b^.kindB)
+      boundA = bboxOfA (ak^.kindA)
+      rectB = offRect (b^.posB) boundB
+      rectA = offRect (ak^.posA) boundA
+  in
+    intersects rectA rectB
+
+intersects r1 r2 =
+  not (r2^.tl._1 > r1^.br._1 ||
+       r2^.br._1 < r1^.tl._1 ||
+       r2^.tl._2 > r1^.br._2 ||
+       r2^.br._2 < r1^.tl._2)
+
+offRect :: Point -> Rect -> Rect
+offRect (dx,dy) (Rect (x1,y1) (x2,y2)) = Rect (x1+dx,y1+dy) (x2+dx,y2+dy)
 
 moveBombs :: Level -> Level
 moveBombs = disappearBombs . fallBombs
@@ -225,7 +245,7 @@ moveBombs = disappearBombs . fallBombs
                                -- filter (\b -> b^.posB._2 > floorLine) -- is this simpler?
         fallBombs = falls.mapped %~ execState fallBomb
         fallBomb = do
-          spd <- speedB <+= 0.15 -- gravity
+          spd <- speedB <+= gravity
           posB._2 -= spd
 
 akSpeed :: AttackerKind -> Double
@@ -241,8 +261,9 @@ bboxOf k = case k of
   Plant   -> fromDim   39  46
   Piano   -> fromDim  160 145  
 
--- TODO bbox doesn't match gfx yet
 bboxOfA :: AttackerKind -> Rect
-bboxOfA ak = fromDim 20   30
+bboxOfA ak = case ak of
+  Knight      -> fromDim  64  96
+  FastKnight  -> fromDim  67 106
 
 fromDim w h = Rect (-w/2, -h/2) (w/2, h/2)
